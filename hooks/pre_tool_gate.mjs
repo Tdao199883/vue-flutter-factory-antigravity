@@ -66,7 +66,7 @@ function main() {
     if (BLOCKED_GENERATED_SUFFIXES.some((suffix) => normPath.endsWith(suffix))) {
       emit(
         "deny",
-        `[Code Factory Gate] Direct editing of generated Dart file '${basename}' is forbidden. Modify the source .dart file and run: dart run build_runner build --delete-conflicting-outputs`
+        `[Code Factory Gate] Direct editing of generated Dart file '${basename}' is forbidden. Modify the source .dart file and run: fvm dart run build_runner build --delete-conflicting-outputs (or dart run build_runner build --delete-conflicting-outputs)`
       );
       return;
     }

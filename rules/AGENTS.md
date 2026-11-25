@@ -7,8 +7,9 @@ You are operating inside the **Vue 3 (Web) & Flutter (Mobile) Code Factory** qua
 ## 1. Universal Code Factory Principles
 
 1. **Repository Profile First**: At the start of a task, check `.agents/repo-profile.json` if it exists (or generate it via `code-factory-verify` skill) so you do not re-derive the stack, state manager, router, or test runner from scratch.
-2. **Generated Files Are Read-Only**:
-   - **Flutter / Dart**: NEVER directly edit `*.g.dart`, `*.freezed.dart`, `*.gr.dart`, `*.config.dart`, or `*.mocks.dart`. Edit the source `.dart` file and run `dart run build_runner build --delete-conflicting-outputs`.
+2. **Generated Files Are Read-Only & FVM Awareness**:
+   - **Flutter / Dart (FVM First)**: Always check if the project uses **FVM** (`.fvmrc` or `.fvm/fvm_config.json` or `.agents/repo-profile.json` `flutter.usesFvm`). When FVM is present, ALWAYS prefix Flutter/Dart commands with `fvm` (`fvm flutter ...`, `fvm dart ...`, or use `.fvm/flutter_sdk/bin/flutter`) so the project's pinned SDK version is used instead of the global Flutter version.
+   - **Flutter / Dart Codegen**: NEVER directly edit `*.g.dart`, `*.freezed.dart`, `*.gr.dart`, `*.config.dart`, or `*.mocks.dart`. Edit the source `.dart` file and run `fvm dart run build_runner build --delete-conflicting-outputs` (or `dart run build_runner...` if not using FVM).
    - **Vue / Web**: NEVER directly edit `auto-imports.d.ts`, `components.d.ts`, `.nuxt/**`, or `dist/**`.
 3. **Verify Ladder (`V0` → `V4`) Before Finalizing**:
    - **`V0` (Static & Types)**: Run differential typechecking and linting (`vue-tsc --noEmit` + `eslint` for Vue; `flutter analyze` + `dart format` for Flutter). Only block on issues in touched files.

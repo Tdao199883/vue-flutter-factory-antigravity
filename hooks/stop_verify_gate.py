@@ -77,6 +77,17 @@ def check_workspace(cwd: str) -> list[str]:
     if not modified:
         return issues
 
+    has_fvm = (
+        os.path.isfile(os.path.join(cwd, ".fvmrc"))
+        or os.path.isfile(os.path.join(cwd, ".fvm", "fvm_config.json"))
+        or os.path.isdir(os.path.join(cwd, ".fvm", "flutter_sdk"))
+    )
+    build_runner_cmd = (
+        "fvm dart run build_runner build --delete-conflicting-outputs"
+        if has_fvm
+        else "dart run build_runner build --delete-conflicting-outputs"
+    )
+
     for rel_path in modified:
         full_path = os.path.join(cwd, *rel_path.split("/"))
         if not os.path.isfile(full_path):
@@ -114,12 +125,12 @@ def check_workspace(cwd: str) -> list[str]:
                             if not os.path.exists(gen_file):
                                 issues.append(
                                     f"Missing generated file `{rel_gen}` for `{rel_path}`. "
-                                    "Run `dart run build_runner build --delete-conflicting-outputs`."
+                                    f"Run `{build_runner_cmd}`."
                                 )
                             elif os.path.getmtime(gen_file) + 1.0 < src_mtime:
                                 issues.append(
                                     f"Stale generated file `{rel_gen}` (older than `{rel_path}`). "
-                                    "Run `dart run build_runner build --delete-conflicting-outputs`."
+                                    f"Run `{build_runner_cmd}`."
                                 )
 
     return issues

@@ -18,6 +18,85 @@ import path from "node:path";
 const IS_WIN = process.platform === "win32";
 const JIRA_KEY_RE = /\b([A-Z][A-Z0-9]{1,9}-\d+)\b/;
 
+/**
+ * Detects whether the workspace uses FVM (.fvmrc or .fvm/fvm_config.json)
+ * and resolves the exact flutter/dart invocation commands.
+ */
+function resolveFlutterToolchain(cwd) {
+  const fvmrcPath = path.join(cwd, ".fvmrc");
+  const fvmConfigPath = path.join(cwd, ".fvm", "fvm_config.json");
+  let usesFvm = false;
+  let fvmVersion = null;
+
+  if (fs.existsSync(fvmrcPath)) {
+    usesFvm = true;
+    try {
+      const data = JSON.parse(fs.readFileSync(fvmrcPath, "utf-8"));
+      fvmVersion = data.flutter || data.flutterSdkVersion || null;
+    } catch {}
+  } else if (fs.existsSync(fvmConfigPath)) {
+    usesFvm = true;
+    try {
+      const data = JSON.parse(fs.readFileSync(fvmConfigPath, "utf-8"));
+      fvmVersion = data.flutterSdkVersion || data.flutter || null;
+    } catch {}
+  }
+
+  // 1. Check local .fvm/flutter_sdk/bin symlink first (fastest & works even if `fvm` CLI isn't in PATH)
+  const localFlutterBin = path.join(
+    cwd,
+    ".fvm",
+    "flutter_sdk",
+    "bin",
+    IS_WIN ? "flutter.bat" : "flutter"
+  );
+  const localDartBin = path.join(
+    cwd,
+    ".fvm",
+    "flutter_sdk",
+    "bin",
+    IS_WIN ? "dart.bat" : "dart"
+  );
+
+  if (fs.existsSync(localFlutterBin) && fs.existsSync(localDartBin)) {
+    return {
+      usesFvm: true,
+      fvmVersion,
+      source: ".fvm/flutter_sdk/bin",
+      flutterCmd: [localFlutterBin],
+      dartCmd: [localDartBin],
+      buildRunnerHint: "fvm dart run build_runner build --delete-conflicting-outputs",
+    };
+  }
+
+  // 2. If project uses FVM (or fvm binary is available when .fvmrc exists), route via `fvm flutter` / `fvm dart`
+  if (usesFvm) {
+    const fvmCheck = runCmd("fvm", ["--version"], cwd, 5000);
+    if (fvmCheck.code === 0) {
+      return {
+        usesFvm: true,
+        fvmVersion,
+        source: "fvm CLI",
+        flutterCmd: ["fvm", "flutter"],
+        dartCmd: ["fvm", "dart"],
+        buildRunnerHint: "fvm dart run build_runner build --delete-conflicting-outputs",
+      };
+    }
+  }
+
+  // 3. Fallback to global flutter / dart
+  return {
+    usesFvm,
+    fvmVersion,
+    source: "global PATH",
+    flutterCmd: ["flutter"],
+    dartCmd: ["dart"],
+    buildRunnerHint: usesFvm
+      ? "fvm dart run build_runner build --delete-conflicting-outputs"
+      : "dart run build_runner build --delete-conflicting-outputs",
+  };
+}
+
 function normalizeRel(p) {
   return String(p || "").replace(/\\/g, "/").trim();
 }
@@ -140,7 +219,15 @@ function detectProfile(cwd) {
     if (pubspecText.includes("go_router:")) router = "go_router";
     else if (pubspecText.includes("auto_route:")) router = "auto_route";
 
+    const toolchain = resolveFlutterToolchain(cwd);
+
     profile.flutter = {
+      usesFvm: toolchain.usesFvm,
+      fvmVersion: toolchain.fvmVersion,
+      sdkSource: toolchain.source,
+      flutterCommand: toolchain.flutterCmd.join(" "),
+      dartCommand: toolchain.dartCmd.join(" "),
+      buildRunnerCommand: toolchain.buildRunnerHint,
       stateManagement: stateMgmt.length
         ? stateMgmt
         : ["StatefulWidget / ValueNotifier"],
@@ -481,36 +568,44 @@ function cmdVerify(cwd) {
   if (profile.stacks.includes("flutter") && dartChanged.length > 0) {
     if (report.V0.status === "SKIPPED") report.V0.status = "PASS";
 
+    const toolchain = resolveFlutterToolchain(cwd);
+    const [dartBin, ...dartPrefix] = toolchain.dartCmd;
+    const [flutterBin, ...flutterPrefix] = toolchain.flutterCmd;
+
     const fRes = runCmd(
-      "dart",
-      ["format", "--output=none", "--set-exit-if-changed", ...dartChanged],
+      dartBin,
+      [...dartPrefix, "format", "--output=none", "--set-exit-if-changed", ...dartChanged],
       cwd
     );
     if (fRes.code !== 0 && fRes.code !== 127) {
       v0Failed = true;
       report.V0.checks.push({
-        name: "dart format (changed files)",
+        name: `dart format (${toolchain.source})`,
         status: "FAIL",
         output: (fRes.stdout || fRes.stderr).split(/\r?\n/).slice(0, 20),
       });
     } else if (fRes.code === 0) {
       report.V0.checks.push({
-        name: "dart format (changed files)",
+        name: `dart format (${toolchain.source})`,
         status: "PASS",
       });
     }
 
-    const aRes = runCmd("flutter", ["analyze", ...dartChanged], cwd);
+    const aRes = runCmd(
+      flutterBin,
+      [...flutterPrefix, "analyze", ...dartChanged],
+      cwd
+    );
     if (aRes.code !== 0 && aRes.code !== 127) {
       v0Failed = true;
       report.V0.checks.push({
-        name: "flutter analyze (changed files)",
+        name: `flutter analyze (${toolchain.source})`,
         status: "FAIL",
         output: `${aRes.stdout}\n${aRes.stderr}`.split(/\r?\n/).slice(0, 30),
       });
     } else if (aRes.code === 0) {
       report.V0.checks.push({
-        name: "flutter analyze (changed files)",
+        name: `flutter analyze (${toolchain.source})`,
         status: "PASS",
       });
     }
@@ -531,18 +626,22 @@ function cmdVerify(cwd) {
 
     if (dartTests.length > 0) {
       if (report.V1.status === "SKIPPED") report.V1.status = "PASS";
-      const tRes = runCmd("flutter", ["test", ...dartTests], cwd);
+      const tRes = runCmd(
+        flutterBin,
+        [...flutterPrefix, "test", ...dartTests],
+        cwd
+      );
       if (tRes.code !== 0) {
         v1Failed = true;
         report.V1.checks.push({
-          name: "flutter test (targeted)",
+          name: `flutter test (${toolchain.source})`,
           status: "FAIL",
           files: dartTests,
           output: `${tRes.stdout}\n${tRes.stderr}`.split(/\r?\n/).slice(-30),
         });
       } else {
         report.V1.checks.push({
-          name: "flutter test (targeted)",
+          name: `flutter test (${toolchain.source})`,
           status: "PASS",
           files: dartTests,
         });

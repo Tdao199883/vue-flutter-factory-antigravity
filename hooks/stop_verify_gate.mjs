@@ -52,6 +52,14 @@ function checkWorkspace(cwd) {
   const issues = [];
   if (!cwd || !fs.existsSync(cwd)) return issues;
 
+  const hasFvm =
+    fs.existsSync(path.join(cwd, ".fvmrc")) ||
+    fs.existsSync(path.join(cwd, ".fvm", "fvm_config.json")) ||
+    fs.existsSync(path.join(cwd, ".fvm", "flutter_sdk"));
+  const buildRunnerCmd = hasFvm
+    ? "fvm dart run build_runner build --delete-conflicting-outputs"
+    : "dart run build_runner build --delete-conflicting-outputs";
+
   const modified = getModifiedFiles(cwd);
   for (const relPath of modified) {
     const fullPath = path.join(cwd, ...relPath.split("/"));
@@ -93,11 +101,11 @@ function checkWorkspace(cwd) {
               const relGen = normalizeRel(path.relative(cwd, genFile));
               if (!fs.existsSync(genFile)) {
                 issues.push(
-                  `Missing generated file \`${relGen}\` for \`${relPath}\`. Run \`dart run build_runner build --delete-conflicting-outputs\`.`
+                  `Missing generated file \`${relGen}\` for \`${relPath}\`. Run \`${buildRunnerCmd}\`.`
                 );
               } else if (fs.statSync(genFile).mtimeMs + 1000 < srcMtime) {
                 issues.push(
-                  `Stale generated file \`${relGen}\` (older than \`${relPath}\`). Run \`dart run build_runner build --delete-conflicting-outputs\`.`
+                  `Stale generated file \`${relGen}\` (older than \`${relPath}\`). Run \`${buildRunnerCmd}\`.`
                 );
               }
             }

@@ -17,6 +17,71 @@ import sys
 from datetime import datetime, timezone
 
 JIRA_KEY_RE = re.compile(r"\b([A-Z][A-Z0-9]{1,9}-\d+)\b")
+IS_WIN = sys.platform.startswith("win")
+
+
+def resolve_flutter_toolchain(cwd: str) -> dict:
+    fvmrc_path = os.path.join(cwd, ".fvmrc")
+    fvm_cfg_path = os.path.join(cwd, ".fvm", "fvm_config.json")
+    uses_fvm = False
+    fvm_version = None
+
+    if os.path.isfile(fvmrc_path):
+        uses_fvm = True
+        try:
+            with open(fvmrc_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                fvm_version = data.get("flutter") or data.get("flutterSdkVersion")
+        except Exception:
+            pass
+    elif os.path.isfile(fvm_cfg_path):
+        uses_fvm = True
+        try:
+            with open(fvm_cfg_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                fvm_version = data.get("flutterSdkVersion") or data.get("flutter")
+        except Exception:
+            pass
+
+    local_flutter = os.path.join(
+        cwd, ".fvm", "flutter_sdk", "bin", "flutter.bat" if IS_WIN else "flutter"
+    )
+    local_dart = os.path.join(
+        cwd, ".fvm", "flutter_sdk", "bin", "dart.bat" if IS_WIN else "dart"
+    )
+    if os.path.isfile(local_flutter) and os.path.isfile(local_dart):
+        return {
+            "usesFvm": True,
+            "fvmVersion": fvm_version,
+            "source": ".fvm/flutter_sdk/bin",
+            "flutterCmd": [local_flutter],
+            "dartCmd": [local_dart],
+            "buildRunnerHint": "fvm dart run build_runner build --delete-conflicting-outputs",
+        }
+
+    fvm_bin = shutil.which("fvm")
+    if uses_fvm and fvm_bin:
+        return {
+            "usesFvm": True,
+            "fvmVersion": fvm_version,
+            "source": "fvm CLI",
+            "flutterCmd": [fvm_bin, "flutter"],
+            "dartCmd": [fvm_bin, "dart"],
+            "buildRunnerHint": "fvm dart run build_runner build --delete-conflicting-outputs",
+        }
+
+    flutter_bin = shutil.which("flutter") or "flutter"
+    dart_bin = shutil.which("dart") or "dart"
+    return {
+        "usesFvm": uses_fvm,
+        "fvmVersion": fvm_version,
+        "source": "global PATH",
+        "flutterCmd": [flutter_bin],
+        "dartCmd": [dart_bin],
+        "buildRunnerHint": "fvm dart run build_runner build --delete-conflicting-outputs"
+        if uses_fvm
+        else "dart run build_runner build --delete-conflicting-outputs",
+    }
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -162,7 +227,15 @@ def detect_profile(cwd: str) -> dict:
         elif "auto_route:" in pubspec_text:
             router = "auto_route"
 
+        toolchain = resolve_flutter_toolchain(cwd)
+
         profile["flutter"] = {
+            "usesFvm": toolchain["usesFvm"],
+            "fvmVersion": toolchain["fvmVersion"],
+            "sdkSource": toolchain["source"],
+            "flutterCommand": " ".join(toolchain["flutterCmd"]),
+            "dartCommand": " ".join(toolchain["dartCmd"]),
+            "buildRunnerCommand": toolchain["buildRunnerHint"],
             "stateManagement": state_mgmt or ["StatefulWidget / ValueNotifier"],
             "router": router or "Navigator",
             "codegen": codegen,
@@ -456,48 +529,42 @@ def cmd_verify(cwd: str) -> int:
         if report["V0"]["status"] == "SKIPPED":
             report["V0"]["status"] = "PASS"
 
-        flutter_bin = shutil.which("flutter")
-        dart_bin = shutil.which("dart")
+        toolchain = resolve_flutter_toolchain(cwd)
+        dart_cmd = toolchain["dartCmd"]
+        flutter_cmd = toolchain["flutterCmd"]
 
-        if dart_bin:
-            f_code, f_out, f_err = run_cmd(
-                [dart_bin, "format", "--output=none", "--set-exit-if-changed", *dart_changed],
-                cwd=cwd,
-            )
-            if f_code != 0:
-                v0_failed = True
-                report["V0"]["checks"].append(
-                    {
-                        "name": "dart format (changed files)",
-                        "status": "FAIL",
-                        "output": (f_out or f_err).splitlines()[:20],
-                    }
-                )
-            else:
-                report["V0"]["checks"].append(
-                    {"name": "dart format (changed files)", "status": "PASS"}
-                )
-
-        analyzer_cmd = (
-            [flutter_bin, "analyze", *dart_changed]
-            if flutter_bin
-            else ([dart_bin, "analyze", *dart_changed] if dart_bin else [])
+        f_code, f_out, f_err = run_cmd(
+            [*dart_cmd, "format", "--output=none", "--set-exit-if-changed", *dart_changed],
+            cwd=cwd,
         )
-        if analyzer_cmd:
-            a_code, a_out, a_err = run_cmd(analyzer_cmd, cwd=cwd)
-            if a_code != 0:
-                v0_failed = True
-                report["V0"]["checks"].append(
-                    {
-                        "name": "flutter analyze (changed files)",
-                        "status": "FAIL",
-                        "output": f"{a_out}\n{a_err}".splitlines()[:30],
-                    }
-                )
-            else:
-                report["V0"]["checks"].append(
-                    {"name": "flutter analyze (changed files)", "status": "PASS"}
-                )
+        if f_code not in (0, 127):
+            v0_failed = True
+            report["V0"]["checks"].append(
+                {
+                    "name": f"dart format ({toolchain['source']})",
+                    "status": "FAIL",
+                    "output": (f_out or f_err).splitlines()[:20],
+                }
+            )
+        elif f_code == 0:
+            report["V0"]["checks"].append(
+                {"name": f"dart format ({toolchain['source']})", "status": "PASS"}
+            )
+
+        a_code, a_out, a_err = run_cmd([*flutter_cmd, "analyze", *dart_changed], cwd=cwd)
+        if a_code not in (0, 127):
+            v0_failed = True
+            report["V0"]["checks"].append(
+                {
+                    "name": f"flutter analyze ({toolchain['source']})",
+                    "status": "FAIL",
+                    "output": f"{a_out}\n{a_err}".splitlines()[:30],
+                }
+            )
+        elif a_code == 0:
+            report["V0"]["checks"].append(
+                {"name": f"flutter analyze ({toolchain['source']})", "status": "PASS"}
+            )
 
         dart_tests = [f for f in dart_changed if f.endswith("_test.dart")]
         for f in dart_changed:
@@ -510,15 +577,15 @@ def cmd_verify(cwd: str) -> int:
                 ):
                     dart_tests.append(candidate)
 
-        if dart_tests and flutter_bin:
+        if dart_tests:
             if report["V1"]["status"] == "SKIPPED":
                 report["V1"]["status"] = "PASS"
-            t_code, t_out, t_err = run_cmd([flutter_bin, "test", *dart_tests], cwd=cwd)
+            t_code, t_out, t_err = run_cmd([*flutter_cmd, "test", *dart_tests], cwd=cwd)
             if t_code != 0:
                 v1_failed = True
                 report["V1"]["checks"].append(
                     {
-                        "name": "flutter test (targeted)",
+                        "name": f"flutter test ({toolchain['source']})",
                         "status": "FAIL",
                         "files": dart_tests,
                         "output": f"{t_out}\n{t_err}".splitlines()[-30:],
@@ -526,7 +593,11 @@ def cmd_verify(cwd: str) -> int:
                 )
             else:
                 report["V1"]["checks"].append(
-                    {"name": "flutter test (targeted)", "status": "PASS", "files": dart_tests}
+                    {
+                        "name": f"flutter test ({toolchain['source']})",
+                        "status": "PASS",
+                        "files": dart_tests,
+                    }
                 )
 
     if v0_failed:

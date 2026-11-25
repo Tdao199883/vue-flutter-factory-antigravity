@@ -17,6 +17,7 @@ Follow this structured 6-stage factory workflow whenever building or modifying a
 
 1. Check `.agents/repo-profile.json` (or run `node ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.mjs profile --cwd "$(pwd)"`).
 2. Respect the repository's existing architecture:
+   - **FVM (Flutter Version Management)**: Check `flutter.usesFvm` and `flutter.fvmVersion` in `.agents/repo-profile.json` (or check `.fvmrc` / `.fvm/fvm_config.json`). If FVM is used, ALWAYS run commands via `fvm flutter` and `fvm dart` (or `.fvm/flutter_sdk/bin/flutter`) to avoid SDK version mismatches across machines.
    - **State Management**: `flutter_bloc` (Bloc/Cubit), `flutter_riverpod` (Notifier/AsyncNotifier), `provider`, or `get`.
    - **Code Generation**: Check `pubspec.yaml` for `freezed`, `json_serializable`, `riverpod_generator`, `auto_route_generator`, `injectable_generator`.
    - **Navigation**: `go_router`, `auto_route`, or `Navigator` 1.0/2.0.
