@@ -27,6 +27,8 @@ vue-flutter-factory-antigravity/
 │   ├── flutter-lifecycle-memory-reviewer.md        # Soát lỗi quên dispose() controller, dùng BuildContext sau await
 │   └── flutter-ui-performance-reviewer.md          # Soát lỗi vỡ khung RenderFlex overflow, ListView trong Column, thiếu const
 └── skills/                                         # Bộ Skills điều phối quy trình
+    ├── auto-factory-board/
+    │   └── SKILL.md                                # Điều phối Auto-Factory Board (Jira Sprint/Board + Parallel Worktrees)
     ├── code-factory-verify/
     │   ├── SKILL.md                                # Điều phối Verify Ladder (V0-V4) & gọi dàn Reviewer Fleet
     │   └── scripts/
@@ -84,6 +86,16 @@ Thay vì chỉ dùng 1 cuộc hội thoại chung, hệ thống phân tích `git
   * Bắt lỗi kinh điển gây đỏ/trắng màn hình: đặt `ListView` / `GridView` bên trong `Column` mà không bọc `Expanded` / `Flexible` (`Vertical viewport was given unbounded height`).
   * Bắt lỗi tràn chữ/vỡ khung (`RenderFlex overflowed`) khi đặt `Text` động bên trong `Row` mà không bọc `Expanded`/`Flexible` kèm `TextOverflow.ellipsis`.
   * Nhắc tách các hàm `Widget _buildItem()` thành `class _Item extends StatelessWidget` có `const` constructor để tối ưu hiệu năng rebuild.
+
+---
+
+### 4. Điều phối Jira & Chạy Song Song — `auto-factory-board` (`skills/auto-factory-board/`)
+
+Kết hợp trực tiếp với plugin Atlassian **`twg-jira`** và cơ chế **Isolated Workspaces (`Workspace: "share"`)** của Antigravity:
+* **Tự động phát hiện mã Jira (`C2P3-111`...)** từ tên nhánh Git hoặc tên thư mục dự án (`board-status`).
+* **Lập bảng kế hoạch & Ma trận chống đụng độ file (Conflict Matrix):** Khi bạn yêu cầu chạy `auto-factory board` trên 1 Sprint hoặc 1 danh sách nhiều ticket Jira, hệ thống tự động chia các ticket độc lập sang các **Worktree riêng biệt (`Workspace: "share"`)** để nhiều Subagents code song song cùng lúc, còn các ticket sửa chung file sẽ được xếp chạy nối tiếp nhau.
+* **Đối chiếu Acceptance Criteria (AC) & Chuẩn hóa Commit:** Mỗi Subagent tự đọc AC từ Jira, tự viết code, tự chạy Verify Ladder `V0` → `V4` và tạo commit chuẩn `feat(<JIRA-KEY>): ...`.
+* **Chế độ Tiết kiệm Token thông minh (`Smart Tiering`):** Tự động phân biệt diff nhỏ (< 40 dòng, 1 file -> chỉ chạy `V0/V1` tốn 0 token phụ) và diff lớn (2+ files -> mới gọi dàn Reviewer Fleet).
 
 ---
 

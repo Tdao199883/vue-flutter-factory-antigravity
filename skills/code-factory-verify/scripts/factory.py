@@ -10,10 +10,13 @@ Commands:
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
+
+JIRA_KEY_RE = re.compile(r"\b([A-Z][A-Z0-9]{1,9}-\d+)\b")
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -187,6 +190,89 @@ def get_changed_files(cwd: str) -> list[str]:
     return files
 
 
+def extract_jira_context(cwd: str) -> dict:
+    code, branch, _ = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=cwd, timeout=5)
+    branch = branch if code == 0 else ""
+    branch_match = JIRA_KEY_RE.search(branch)
+    folder_match = JIRA_KEY_RE.search(os.path.basename(cwd))
+    jira_key = branch_match.group(1) if branch_match else (folder_match.group(1) if folder_match else None)
+    return {
+        "branch": branch or None,
+        "jiraKey": jira_key,
+        "suggestedCommitPrefix": f"feat({jira_key}): " if jira_key else "feat: ",
+    }
+
+
+def cmd_init(cwd: str) -> int:
+    profile = detect_profile(cwd)
+    jira = extract_jira_context(cwd)
+    agents_dir = os.path.join(cwd, ".agents")
+    os.makedirs(agents_dir, exist_ok=True)
+    profile_path = os.path.join(agents_dir, "repo-profile.json")
+    with open(profile_path, "w", encoding="utf-8") as f:
+        json.dump({**profile, "jira": jira}, f, indent=2, ensure_ascii=False)
+
+    config_path = os.path.join(agents_dir, "factory.config.json")
+    if not os.path.isfile(config_path):
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "tier": "auto",
+                    "reviewerFleetThresholdLines": 40,
+                    "verifyLadder": {"V0": True, "V1": True, "V3": True, "V4": True},
+                    "jiraIntegration": True,
+                },
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
+
+    git_exclude = os.path.join(cwd, ".git", "info", "exclude")
+    if os.path.isfile(git_exclude):
+        with open(git_exclude, "r", encoding="utf-8", errors="ignore") as f:
+            exc = f.read()
+        if ".agents/repo-profile.json" not in exc:
+            with open(git_exclude, "a", encoding="utf-8") as f:
+                f.write("\n.agents/repo-profile.json\n")
+
+    print(
+        json.dumps(
+            {
+                "status": "initialized",
+                "profilePath": profile_path,
+                "configPath": config_path,
+                "jira": jira,
+                "stacks": profile["stacks"],
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
+def cmd_board_status(cwd: str) -> int:
+    jira = extract_jira_context(cwd)
+    changed = get_changed_files(cwd)
+    profile = detect_profile(cwd)
+    print(
+        json.dumps(
+            {
+                "cwd": cwd,
+                "stacks": profile["stacks"],
+                "branch": jira["branch"],
+                "detectedJiraKey": jira["jiraKey"],
+                "suggestedCommitPrefix": jira["suggestedCommitPrefix"],
+                "uncommittedFilesCount": len(changed),
+                "uncommittedFiles": changed,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
 def cmd_profile(cwd: str) -> int:
     profile = detect_profile(cwd)
     agents_dir = os.path.join(cwd, ".agents")
@@ -245,7 +331,10 @@ def cmd_classify(cwd: str) -> int:
         if "V3_DEVICE_HUB" not in verify_rungs:
             verify_rungs.append("V3_DEVICE_HUB")
 
+    jira = extract_jira_context(cwd)
     result = {
+        "jira": jira,
+        "recommendedTier": "full (run Reviewer Fleet)" if len(changed) >= 2 else "quick (V0/V1 only - save tokens)",
         "changedFilesCount": len(changed),
         "changedFiles": changed,
         "categories": {
@@ -451,17 +540,21 @@ def cmd_verify(cwd: str) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Vue & Flutter Code Factory Engine")
-    parser.add_argument("action", choices=["profile", "classify", "verify"])
+    parser.add_argument("action", choices=["init", "profile", "classify", "verify", "board-status"])
     parser.add_argument("--cwd", default=os.getcwd(), help="Target workspace directory")
     args = parser.parse_args()
 
     cwd = os.path.abspath(args.cwd)
+    if args.action == "init":
+        return cmd_init(cwd)
     if args.action == "profile":
         return cmd_profile(cwd)
     if args.action == "classify":
         return cmd_classify(cwd)
     if args.action == "verify":
         return cmd_verify(cwd)
+    if args.action == "board-status":
+        return cmd_board_status(cwd)
     return 0
 
 

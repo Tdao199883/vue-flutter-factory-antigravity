@@ -11,8 +11,8 @@
   "homepage": "https://github.com/Tdao199883/vue-flutter-factory-antigravity",
   "repository": "https://github.com/Tdao199883/vue-flutter-factory-antigravity",
   "suggestedPrompts": [
+    "Run auto-factory board for my current Jira ticket or active sprint",
     "Run the Vue & Flutter Code Factory verification ladder (V0-V4) on my current changes",
-    "Dispatch the Vue Reactivity and UI Reviewer Fleet on my modified .vue and .ts files",
-    "Dispatch the Flutter Lifecycle, Memory, and Overflow Reviewer Fleet on my modified .dart files"
+    "Dispatch the Vue or Flutter Reviewer Fleet on my modified files"
   ]
 }

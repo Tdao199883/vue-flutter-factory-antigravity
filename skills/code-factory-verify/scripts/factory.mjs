@@ -4,9 +4,11 @@
  * Works across Windows, macOS, and Linux without requiring Python.
  *
  * Usage:
+ *   node factory.mjs init --cwd <dir>
  *   node factory.mjs profile --cwd <dir>
  *   node factory.mjs classify --cwd <dir>
  *   node factory.mjs verify --cwd <dir>
+ *   node factory.mjs board-status --cwd <dir>
  */
 
 import { spawnSync } from "node:child_process";
@@ -14,6 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const IS_WIN = process.platform === "win32";
+const JIRA_KEY_RE = /\b([A-Z][A-Z0-9]{1,9}-\d+)\b/;
 
 function normalizeRel(p) {
   return String(p || "").replace(/\\/g, "/").trim();
@@ -168,6 +171,96 @@ function getChangedFiles(cwd) {
   return files;
 }
 
+function extractJiraContext(cwd) {
+  let branch = "";
+  const bRes = runCmd("git", ["rev-parse", "--abbrev-ref", "HEAD"], cwd, 5000);
+  if (bRes.code === 0) branch = bRes.stdout;
+
+  const branchMatch = branch.match(JIRA_KEY_RE);
+  const folderMatch = path.basename(cwd).match(JIRA_KEY_RE);
+  const jiraKey = branchMatch ? branchMatch[1] : folderMatch ? folderMatch[1] : null;
+
+  return {
+    branch: branch || null,
+    jiraKey,
+    suggestedCommitPrefix: jiraKey ? `feat(${jiraKey}): ` : "feat: ",
+  };
+}
+
+function cmdInit(cwd) {
+  const profile = detectProfile(cwd);
+  const jira = extractJiraContext(cwd);
+  const agentsDir = path.join(cwd, ".agents");
+  fs.mkdirSync(agentsDir, { recursive: true });
+
+  const profilePath = path.join(agentsDir, "repo-profile.json");
+  fs.writeFileSync(profilePath, JSON.stringify({ ...profile, jira }, null, 2), "utf-8");
+
+  const configPath = path.join(agentsDir, "factory.config.json");
+  if (!fs.existsSync(configPath)) {
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          tier: "auto",
+          reviewerFleetThresholdLines: 40,
+          verifyLadder: { V0: true, V1: true, V3: true, V4: true },
+          jiraIntegration: true,
+        },
+        null,
+        2
+      ),
+      "utf-8"
+    );
+  }
+
+  // Add .agents/repo-profile.json to .git/info/exclude so it never pollutes git status
+  const gitExclude = path.join(cwd, ".git", "info", "exclude");
+  if (fs.existsSync(gitExclude)) {
+    const excludeContent = fs.readFileSync(gitExclude, "utf-8");
+    if (!excludeContent.includes(".agents/repo-profile.json")) {
+      fs.appendFileSync(gitExclude, "\n.agents/repo-profile.json\n", "utf-8");
+    }
+  }
+
+  console.log(
+    JSON.stringify(
+      {
+        status: "initialized",
+        profilePath,
+        configPath,
+        jira,
+        stacks: profile.stacks,
+      },
+      null,
+      2
+    )
+  );
+  return 0;
+}
+
+function cmdBoardStatus(cwd) {
+  const jira = extractJiraContext(cwd);
+  const changed = getChangedFiles(cwd);
+  const profile = detectProfile(cwd);
+  console.log(
+    JSON.stringify(
+      {
+        cwd,
+        stacks: profile.stacks,
+        branch: jira.branch,
+        detectedJiraKey: jira.jiraKey,
+        suggestedCommitPrefix: jira.suggestedCommitPrefix,
+        uncommittedFilesCount: changed.length,
+        uncommittedFiles: changed,
+      },
+      null,
+      2
+    )
+  );
+  return 0;
+}
+
 function cmdProfile(cwd) {
   const profile = detectProfile(cwd);
   const agentsDir = path.join(cwd, ".agents");
@@ -227,9 +320,27 @@ function cmdClassify(cwd) {
       verifyRungs.push("V3_DEVICE_HUB");
   }
 
+  const jira = extractJiraContext(cwd);
+  let diffLines = 0;
+  const dRes = runCmd("git", ["diff", "--shortstat"], cwd, 5000);
+  if (dRes.code === 0 && dRes.stdout) {
+    const m = dRes.stdout.match(/(\d+)\s+insertion|(\d+)\s+deletion/g);
+    if (m) {
+      for (const part of m) {
+        const num = parseInt(part, 10);
+        if (!Number.isNaN(num)) diffLines += num;
+      }
+    }
+  }
+  const tier =
+    changed.length >= 2 || diffLines >= 40 ? "full (run Reviewer Fleet)" : "quick (V0/V1 only - save tokens)";
+
   console.log(
     JSON.stringify(
       {
+        jira,
+        recommendedTier: tier,
+        estimatedDiffLines: diffLines,
         changedFilesCount: changed.length,
         changedFiles: changed,
         categories: {
@@ -455,11 +566,13 @@ function main() {
     cwd = path.resolve(args[cwdIdx + 1]);
   }
 
-  if (action === "profile") process.exit(cmdProfile(cwd));
+  if (action === "init") process.exit(cmdInit(cwd));
+  else if (action === "profile") process.exit(cmdProfile(cwd));
   else if (action === "classify") process.exit(cmdClassify(cwd));
   else if (action === "verify") process.exit(cmdVerify(cwd));
+  else if (action === "board-status") process.exit(cmdBoardStatus(cwd));
   else {
-    console.error("Unknown action. Use: profile | classify | verify");
+    console.error("Unknown action. Use: init | profile | classify | verify | board-status");
     process.exit(1);
   }
 }
