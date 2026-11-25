@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Vue 3 & Flutter Code Factory CLI Engine for Google Antigravity.
+"""Vue 3 & Flutter Code Factory CLI Engine for Google Antigravity (Cross-Platform: macOS, Windows, Linux).
 
 Commands:
   profile  -- Inspects the workspace and writes `.agents/repo-profile.json`
@@ -15,6 +15,13 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+
+def normalize_rel(path: str) -> str:
+    return path.replace("\\", "/").strip()
+
 
 def run_cmd(cmd: list[str], cwd: str, timeout: int = 120) -> tuple[int, str, str]:
     try:
@@ -23,6 +30,8 @@ def run_cmd(cmd: list[str], cwd: str, timeout: int = 120) -> tuple[int, str, str
             cwd=cwd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             check=False,
         )
@@ -36,6 +45,7 @@ def run_cmd(cmd: list[str], cwd: str, timeout: int = 120) -> tuple[int, str, str
 def detect_profile(cwd: str) -> dict:
     profile: dict = {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "platform": sys.platform,
         "root": cwd,
         "stacks": [],
         "vue": None,
@@ -173,7 +183,7 @@ def get_changed_files(cwd: str) -> list[str]:
         path = line[3:].strip()
         if " -> " in path:
             path = path.split(" -> ", 1)[1].strip()
-        files.append(path.strip('"'))
+        files.append(normalize_rel(path.strip('"')))
     return files
 
 
@@ -183,8 +193,8 @@ def cmd_profile(cwd: str) -> int:
     os.makedirs(agents_dir, exist_ok=True)
     out_path = os.path.join(agents_dir, "repo-profile.json")
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(profile, f, indent=2)
-    print(json.dumps({"status": "ok", "profilePath": out_path, "profile": profile}, indent=2))
+        json.dump(profile, f, indent=2, ensure_ascii=False)
+    print(json.dumps({"status": "ok", "profilePath": out_path, "profile": profile}, indent=2, ensure_ascii=False))
     return 0
 
 
@@ -248,7 +258,7 @@ def cmd_classify(cwd: str) -> int:
         "recommendedReviewers": reviewers,
         "requiredVerifyRungs": verify_rungs,
     }
-    print(json.dumps(result, indent=2))
+    print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 
 
@@ -271,14 +281,12 @@ def cmd_verify(cwd: str) -> int:
         report["V0"]["status"] = "PASS"
         npx_bin = shutil.which("npx")
         if npx_bin:
-            # Differential vue-tsc check
             code, out, err = run_cmd([npx_bin, "--no-install", "vue-tsc", "--noEmit"], cwd=cwd)
             combined = f"{out}\n{err}".strip()
-            # Filter output lines to only modified files
             relevant_lines = [
                 line
                 for line in combined.splitlines()
-                if any(f in line for f in vue_changed)
+                if any(f in normalize_rel(line) for f in vue_changed)
             ]
             if code != 0 and relevant_lines:
                 v0_failed = True
@@ -294,8 +302,9 @@ def cmd_verify(cwd: str) -> int:
                     {"name": "vue-tsc (differential)", "status": "PASS"}
                 )
 
-            # Differential eslint check on touched files
-            existing_vue = [f for f in vue_changed if os.path.isfile(os.path.join(cwd, f))]
+            existing_vue = [
+                f for f in vue_changed if os.path.isfile(os.path.join(cwd, *f.split("/")))
+            ]
             if existing_vue and (profile.get("vue") or {}).get("linter") == "eslint":
                 e_code, e_out, e_err = run_cmd(
                     [npx_bin, "--no-install", "eslint", *existing_vue], cwd=cwd
@@ -314,14 +323,16 @@ def cmd_verify(cwd: str) -> int:
                         {"name": "eslint (changed files)", "status": "PASS"}
                     )
 
-        # Vue V1: Targeted vitest specs
         spec_files = [
             f for f in vue_changed if f.endswith((".spec.ts", ".test.ts", ".spec.tsx", ".test.tsx"))
         ]
         for f in vue_changed:
             base, _ = os.path.splitext(f)
             for candidate in (f"{base}.spec.ts", f"{base}.test.ts"):
-                if os.path.isfile(os.path.join(cwd, candidate)) and candidate not in spec_files:
+                if (
+                    os.path.isfile(os.path.join(cwd, *candidate.split("/")))
+                    and candidate not in spec_files
+                ):
                     spec_files.append(candidate)
 
         if spec_files and npx_bin and (profile.get("vue") or {}).get("testRunner") == "vitest":
@@ -350,7 +361,7 @@ def cmd_verify(cwd: str) -> int:
         for f in changed
         if f.endswith(".dart")
         and not f.endswith((".g.dart", ".freezed.dart", ".gr.dart", ".mocks.dart"))
-        and os.path.isfile(os.path.join(cwd, f))
+        and os.path.isfile(os.path.join(cwd, *f.split("/")))
     ]
     if "flutter" in profile["stacks"] and dart_changed:
         if report["V0"]["status"] == "SKIPPED":
@@ -399,13 +410,15 @@ def cmd_verify(cwd: str) -> int:
                     {"name": "flutter analyze (changed files)", "status": "PASS"}
                 )
 
-        # Flutter V1: Targeted tests
         dart_tests = [f for f in dart_changed if f.endswith("_test.dart")]
         for f in dart_changed:
             if f.startswith("lib/"):
                 rel = f[len("lib/") : -len(".dart")]
-                candidate = os.path.join("test", f"{rel}_test.dart")
-                if os.path.isfile(os.path.join(cwd, candidate)) and candidate not in dart_tests:
+                candidate = f"test/{rel}_test.dart"
+                if (
+                    os.path.isfile(os.path.join(cwd, *candidate.split("/")))
+                    and candidate not in dart_tests
+                ):
                     dart_tests.append(candidate)
 
         if dart_tests and flutter_bin:
@@ -432,7 +445,7 @@ def cmd_verify(cwd: str) -> int:
     if v1_failed:
         report["V1"]["status"] = "FAIL"
 
-    print(json.dumps(report, indent=2))
+    print(json.dumps(report, indent=2, ensure_ascii=False))
     return 1 if (v0_failed or v1_failed) else 0
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Antigravity PreToolUse Gate for Vue 3 & Flutter Code Factory.
+"""Antigravity PreToolUse Gate for Vue 3 & Flutter Code Factory (Cross-Platform: macOS, Windows, Linux).
 
 Enforces hard safety guardrails before tool execution:
 1. Blocks direct manual edits to generated Flutter files (*.g.dart, *.freezed.dart, etc.)
@@ -9,10 +9,17 @@ Enforces hard safety guardrails before tool execution:
 3. Blocks destructive git commands (git reset --hard, git push --force, git clean -fd).
 """
 
+import io
 import json
 import os
 import re
 import sys
+
+# Ensure UTF-8 stdin/stdout on Windows (avoids cp1252 encoding errors)
+if hasattr(sys.stdin, "reconfigure"):
+    sys.stdin.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 BLOCKED_GENERATED_SUFFIXES = (
     ".g.dart",
@@ -42,17 +49,22 @@ DANGEROUS_CMD_REGEX = re.compile(
     r"git\s+push\s+.*(-f|--force\b)|"
     r"git\s+clean\s+-[a-zA-Z]*f|"
     r"git\s+checkout\s+--\s+\.|"
-    r"rm\s+-rf\s+(/|~|\.\.|\.[/\s]|node_modules\s+/)"
+    r"rm\s+-rf\s+(/|~|\.\.|\.[/\s]|node_modules\s+/)|"
+    r"rmdir\s+/s\s+/q\s+(\\|[a-zA-Z]:\\|\.\.)"
     r")",
     re.IGNORECASE,
 )
+
+
+def normalize_path(path: str) -> str:
+    return path.replace("\\", "/").strip()
 
 
 def emit(decision: str, reason: str = "") -> None:
     payload = {"decision": decision}
     if reason:
         payload["reason"] = reason
-    sys.stdout.write(json.dumps(payload))
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False))
     sys.stdout.flush()
 
 
@@ -69,10 +81,11 @@ def main() -> int:
     args = tool_call.get("args") or {}
 
     if tool_name in ("edit_file", "write_file"):
-        path = args.get("Path") or args.get("path") or ""
-        basename = os.path.basename(path)
+        raw_path = args.get("Path") or args.get("path") or ""
+        norm_path = normalize_path(raw_path)
+        basename = os.path.basename(norm_path)
 
-        if any(path.endswith(suffix) for suffix in BLOCKED_GENERATED_SUFFIXES):
+        if any(norm_path.endswith(suffix) for suffix in BLOCKED_GENERATED_SUFFIXES):
             emit(
                 "deny",
                 f"[Code Factory Gate] Direct editing of generated Dart file '{basename}' is forbidden. "
@@ -88,7 +101,10 @@ def main() -> int:
             )
             return 0
 
-        if any(basename == pat or path.endswith("/" + pat) for pat in SENSITIVE_NATIVE_PATTERNS):
+        if any(
+            basename.lower() == pat.lower() or norm_path.lower().endswith("/" + pat.lower())
+            for pat in SENSITIVE_NATIVE_PATTERNS
+        ):
             emit(
                 "ask",
                 f"[Code Factory Gate] Modifying native platform configuration '{basename}'. Confirm before proceeding.",

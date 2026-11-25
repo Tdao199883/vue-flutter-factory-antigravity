@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Antigravity Stop Hook (Verify Stop-Gate) for Vue 3 & Flutter Code Factory.
+"""Antigravity Stop Hook (Verify Stop-Gate) for Vue 3 & Flutter Code Factory (Cross-Platform).
 
 Runs when the agent is about to finish its turn (`NO_TOOL_CALL`).
 Checks if the current workspace has uncommitted `.vue`, `.ts`, or `.dart` modifications
@@ -14,17 +14,26 @@ import re
 import subprocess
 import sys
 
+if hasattr(sys.stdin, "reconfigure"):
+    sys.stdin.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 CODEGEN_ANNOTATION_RE = re.compile(
     r"@(freezed|unfreezed|JsonSerializable|riverpod|Riverpod|RoutePage)\b"
 )
 CONFLICT_MARKER_RE = re.compile(r"^(<<<<<<<|=======|>>>>>>>)\s", re.MULTILINE)
 
 
+def normalize_rel(path: str) -> str:
+    return path.replace("\\", "/").strip()
+
+
 def emit_stop(decision: str = "stop", reason: str = "") -> None:
     payload = {"decision": decision}
     if reason:
         payload["reason"] = reason
-    sys.stdout.write(json.dumps(payload))
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False))
     sys.stdout.flush()
 
 
@@ -35,6 +44,8 @@ def get_modified_files(cwd: str) -> list[str]:
             cwd=cwd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
             check=False,
         )
@@ -50,7 +61,7 @@ def get_modified_files(cwd: str) -> list[str]:
             path = line[3:].strip()
             if " -> " in path:
                 path = path.split(" -> ", 1)[1].strip()
-            path = path.strip('"')
+            path = normalize_rel(path.strip('"'))
             files.append(path)
         return files
     except Exception:
@@ -67,7 +78,7 @@ def check_workspace(cwd: str) -> list[str]:
         return issues
 
     for rel_path in modified:
-        full_path = os.path.join(cwd, rel_path)
+        full_path = os.path.join(cwd, *rel_path.split("/"))
         if not os.path.isfile(full_path):
             continue
 
@@ -99,14 +110,15 @@ def check_workspace(cwd: str) -> list[str]:
                         part_name = os.path.basename(base + ext)
                         if part_name in content:
                             gen_file = base + ext
+                            rel_gen = normalize_rel(os.path.relpath(gen_file, cwd))
                             if not os.path.exists(gen_file):
                                 issues.append(
-                                    f"Missing generated file `{os.path.relpath(gen_file, cwd)}` for `{rel_path}`. "
+                                    f"Missing generated file `{rel_gen}` for `{rel_path}`. "
                                     "Run `dart run build_runner build --delete-conflicting-outputs`."
                                 )
                             elif os.path.getmtime(gen_file) + 1.0 < src_mtime:
                                 issues.append(
-                                    f"Stale generated file `{os.path.relpath(gen_file, cwd)}` (older than `{rel_path}`). "
+                                    f"Stale generated file `{rel_gen}` (older than `{rel_path}`). "
                                     "Run `dart run build_runner build --delete-conflicting-outputs`."
                                 )
 
@@ -121,7 +133,6 @@ def main() -> int:
         emit_stop("stop")
         return 0
 
-    # Only gate normal turn completions and avoid infinite continuation loops
     termination_reason = data.get("terminationReason", "")
     continuation_active = bool(data.get("continuationActive", False))
     if termination_reason != "NO_TOOL_CALL" or continuation_active:

@@ -84,16 +84,28 @@ Thay vì chỉ dùng 1 cuộc hội thoại chung, hệ thống phân tích `git
 
 ---
 
-## 📥 Hướng dẫn cài đặt
+## 📥 Hướng dẫn cài đặt (Hỗ trợ cả macOS, Windows & Linux)
 
-Bạn chỉ cần clone trực tiếp repository này vào thư mục Global Plugins của Antigravity:
+Plugin đã được tối ưu hóa **Cross-Platform** (tự động xử lý khác biệt giữa `python3`/`python`, đường dẫn `\` trên Windows vs `/` trên macOS, và chuẩn hóa UTF-8 cho log CLI).
 
+### Trên macOS / Linux (Terminal / zsh / bash):
 ```bash
 git clone https://github.com/Tdao199883/vue-flutter-factory-antigravity.git \
   ~/.gemini/config/plugins/vue-flutter-factory-antigravity
 ```
 
-Ngay sau khi clone vào `~/.gemini/config/plugins/vue-flutter-factory-antigravity`, Antigravity sẽ **tự động nhận diện và kích hoạt** toàn bộ Rules, Skills, Reviewer Subagents và Hooks mà không cần khởi động lại.
+### Trên Windows (PowerShell):
+```powershell
+git clone https://github.com/Tdao199883/vue-flutter-factory-antigravity.git `
+  "$HOME\.gemini\config\plugins\vue-flutter-factory-antigravity"
+```
+
+### Trên Windows (Command Prompt / CMD):
+```cmd
+git clone https://github.com/Tdao199883/vue-flutter-factory-antigravity.git "%USERPROFILE%\.gemini\config\plugins\vue-flutter-factory-antigravity"
+```
+
+Ngay sau khi clone vào thư mục `plugins/vue-flutter-factory-antigravity`, Antigravity sẽ **tự động nhận diện và kích hoạt** toàn bộ Rules, Skills, Reviewer Subagents và Hooks mà không cần khởi động lại.
 
 Bạn có thể bật/tắt nhanh plugin bất cứ lúc nào trong phần **Customizations → Plugins** trên giao diện Antigravity.
 
