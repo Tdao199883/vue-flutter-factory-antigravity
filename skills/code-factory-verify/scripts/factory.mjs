@@ -1,0 +1,467 @@
+#!/usr/bin/env node
+/**
+ * Vue 3 & Flutter Code Factory CLI Engine (Node.js Zero-Dependency).
+ * Works across Windows, macOS, and Linux without requiring Python.
+ *
+ * Usage:
+ *   node factory.mjs profile --cwd <dir>
+ *   node factory.mjs classify --cwd <dir>
+ *   node factory.mjs verify --cwd <dir>
+ */
+
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+
+const IS_WIN = process.platform === "win32";
+
+function normalizeRel(p) {
+  return String(p || "").replace(/\\/g, "/").trim();
+}
+
+function runCmd(bin, args, cwd, timeoutMs = 120000) {
+  try {
+    const res = spawnSync(bin, args, {
+      cwd,
+      encoding: "utf-8",
+      timeout: timeoutMs,
+      shell: IS_WIN, // Resolves .cmd / .bat (npx.cmd, flutter.bat, dart.bat) automatically on Windows
+    });
+    return {
+      code: res.status ?? (res.error ? 127 : 0),
+      stdout: (res.stdout || "").trim(),
+      stderr: (res.stderr || (res.error ? res.error.message : "")).trim(),
+    };
+  } catch (err) {
+    return { code: 127, stdout: "", stderr: String(err) };
+  }
+}
+
+function detectProfile(cwd) {
+  const profile = {
+    generatedAt: new Date().toISOString(),
+    platform: process.platform,
+    runtime: "node",
+    root: cwd,
+    stacks: [],
+    vue: null,
+    flutter: null,
+  };
+
+  const pkgJsonPath = path.join(cwd, "package.json");
+  const pubspecPath = path.join(cwd, "pubspec.yaml");
+
+  if (fs.existsSync(pkgJsonPath)) {
+    let pkg = {};
+    try {
+      pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+    } catch {}
+    const deps = {
+      ...(pkg.dependencies || {}),
+      ...(pkg.devDependencies || {}),
+    };
+    const scripts = pkg.scripts || {};
+
+    if ("vue" in deps || "nuxt" in deps) {
+      profile.stacks.push("vue");
+      let pkgManager = "npm";
+      if (fs.existsSync(path.join(cwd, "pnpm-lock.yaml"))) pkgManager = "pnpm";
+      else if (fs.existsSync(path.join(cwd, "yarn.lock"))) pkgManager = "yarn";
+      else if (
+        fs.existsSync(path.join(cwd, "bun.lockb")) ||
+        fs.existsSync(path.join(cwd, "bun.lock"))
+      )
+        pkgManager = "bun";
+
+      const uiLibs = [
+        "element-plus",
+        "vuetify",
+        "naive-ui",
+        "radix-vue",
+        "primevue",
+        "ant-design-vue",
+        "tailwindcss",
+      ].filter((lib) => lib in deps);
+
+      profile.vue = {
+        framework: "nuxt" in deps ? "nuxt" : "vue3",
+        packageManager: pkgManager,
+        stateManagement:
+          "pinia" in deps ? "pinia" : "vuex" in deps ? "vuex" : "composables",
+        router: "vue-router" in deps || "nuxt" in deps ? "vue-router" : null,
+        typecheck:
+          "vue-tsc" in deps || "typecheck" in scripts || "type-check" in scripts
+            ? "vue-tsc"
+            : "tsc",
+        linter: "eslint" in deps ? "eslint" : null,
+        testRunner:
+          "vitest" in deps ? "vitest" : "jest" in deps ? "jest" : null,
+        uiLibraries: uiLibs,
+        autoImports:
+          "unplugin-auto-import" in deps ||
+          "unplugin-vue-components" in deps ||
+          "nuxt" in deps,
+        scripts: Object.keys(scripts),
+      };
+    }
+  }
+
+  if (fs.existsSync(pubspecPath)) {
+    let pubspecText = "";
+    try {
+      pubspecText = fs.readFileSync(pubspecPath, "utf-8");
+    } catch {}
+    profile.stacks.push("flutter");
+
+    const stateMgmt = [
+      "flutter_bloc",
+      "bloc",
+      "flutter_riverpod",
+      "hooks_riverpod",
+      "riverpod",
+      "provider",
+      "get",
+      "mobx",
+    ].filter((lib) => pubspecText.includes(`${lib}:`));
+
+    const codegen = [
+      "build_runner",
+      "freezed",
+      "json_serializable",
+      "riverpod_generator",
+      "auto_route_generator",
+      "injectable_generator",
+    ].filter((lib) => pubspecText.includes(`${lib}:`));
+
+    let router = "Navigator";
+    if (pubspecText.includes("go_router:")) router = "go_router";
+    else if (pubspecText.includes("auto_route:")) router = "auto_route";
+
+    profile.flutter = {
+      stateManagement: stateMgmt.length
+        ? stateMgmt
+        : ["StatefulWidget / ValueNotifier"],
+      router,
+      codegen,
+      usesBuildRunner: codegen.includes("build_runner"),
+    };
+  }
+
+  return profile;
+}
+
+function getChangedFiles(cwd) {
+  const { code, stdout } = runCmd("git", ["status", "--porcelain"], cwd, 10000);
+  if (code !== 0 || !stdout) return [];
+  const files = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    if (line.length < 4) continue;
+    const status = line.slice(0, 2);
+    if (status.includes("D")) continue;
+    let filePath = line.slice(3).trim();
+    if (filePath.includes(" -> ")) {
+      filePath = filePath.split(" -> ")[1].trim();
+    }
+    filePath = normalizeRel(filePath.replace(/^"+|"+$/g, ""));
+    if (filePath) files.push(filePath);
+  }
+  return files;
+}
+
+function cmdProfile(cwd) {
+  const profile = detectProfile(cwd);
+  const agentsDir = path.join(cwd, ".agents");
+  fs.mkdirSync(agentsDir, { recursive: true });
+  const outPath = path.join(agentsDir, "repo-profile.json");
+  fs.writeFileSync(outPath, JSON.stringify(profile, null, 2), "utf-8");
+  console.log(
+    JSON.stringify({ status: "ok", profilePath: outPath, profile }, null, 2)
+  );
+  return 0;
+}
+
+function cmdClassify(cwd) {
+  const changed = getChangedFiles(cwd);
+  const vueFiles = changed.filter((f) => f.endsWith(".vue"));
+  const tsFiles = changed.filter((f) =>
+    [".ts", ".tsx", ".js"].some((ext) => f.endsWith(ext))
+  );
+  const styleFiles = changed.filter((f) =>
+    [".css", ".scss", ".sass"].some((ext) => f.endsWith(ext))
+  );
+  const dartFiles = changed.filter(
+    (f) =>
+      f.endsWith(".dart") &&
+      ![".g.dart", ".freezed.dart", ".gr.dart", ".mocks.dart"].some((ext) =>
+        f.endsWith(ext)
+      )
+  );
+  const nativeMobileFiles = changed.filter((f) =>
+    [
+      "android/",
+      "ios/",
+      "pubspec.yaml",
+      "AndroidManifest.xml",
+      "Info.plist",
+      "build.gradle",
+      "Podfile",
+    ].some((p) => f.includes(p))
+  );
+
+  const reviewers = [];
+  const verifyRungs = ["V0"];
+
+  if (vueFiles.length || tsFiles.length) {
+    reviewers.push("vue-reactivity-reviewer");
+    verifyRungs.push("V1");
+  }
+  if (vueFiles.length || styleFiles.length) {
+    reviewers.push("vue-ui-a11y-reviewer");
+    if (!verifyRungs.includes("V3_BROWSER")) verifyRungs.push("V3_BROWSER");
+  }
+  if (dartFiles.length) {
+    reviewers.push("flutter-lifecycle-memory-reviewer");
+    reviewers.push("flutter-ui-performance-reviewer");
+    if (!verifyRungs.includes("V1")) verifyRungs.push("V1");
+    if (!verifyRungs.includes("V3_DEVICE_HUB"))
+      verifyRungs.push("V3_DEVICE_HUB");
+  }
+
+  console.log(
+    JSON.stringify(
+      {
+        changedFilesCount: changed.length,
+        changedFiles: changed,
+        categories: {
+          vueComponents: vueFiles,
+          tsModules: tsFiles,
+          styles: styleFiles,
+          dartSources: dartFiles,
+          nativeMobileConfigs: nativeMobileFiles,
+        },
+        recommendedReviewers: reviewers,
+        requiredVerifyRungs: verifyRungs,
+      },
+      null,
+      2
+    )
+  );
+  return 0;
+}
+
+function cmdVerify(cwd) {
+  const profile = detectProfile(cwd);
+  const changed = getChangedFiles(cwd);
+  const report = {
+    cwd,
+    changedFiles: changed,
+    V0: { status: "SKIPPED", checks: [] },
+    V1: { status: "SKIPPED", checks: [] },
+  };
+
+  let v0Failed = false;
+  let v1Failed = false;
+
+  // Vue V0 & V1
+  const vueChanged = changed.filter((f) =>
+    [".vue", ".ts", ".tsx"].some((ext) => f.endsWith(ext))
+  );
+  if (profile.stacks.includes("vue") && vueChanged.length > 0) {
+    report.V0.status = "PASS";
+    const { code, stdout, stderr } = runCmd(
+      "npx",
+      ["--no-install", "vue-tsc", "--noEmit"],
+      cwd
+    );
+    const combined = `${stdout}\n${stderr}`.trim();
+    const relevantLines = combined
+      .split(/\r?\n/)
+      .filter((line) => vueChanged.some((f) => normalizeRel(line).includes(f)));
+
+    if (code !== 0 && relevantLines.length > 0) {
+      v0Failed = true;
+      report.V0.checks.push({
+        name: "vue-tsc (differential)",
+        status: "FAIL",
+        errors: relevantLines.slice(0, 25),
+      });
+    } else {
+      report.V0.checks.push({
+        name: "vue-tsc (differential)",
+        status: "PASS",
+      });
+    }
+
+    const existingVue = vueChanged.filter((f) =>
+      fs.existsSync(path.join(cwd, ...f.split("/")))
+    );
+    if (existingVue.length > 0 && profile.vue?.linter === "eslint") {
+      const eRes = runCmd(
+        "npx",
+        ["--no-install", "eslint", ...existingVue],
+        cwd
+      );
+      if (eRes.code !== 0) {
+        v0Failed = true;
+        report.V0.checks.push({
+          name: "eslint (changed files)",
+          status: "FAIL",
+          output: (eRes.stdout || eRes.stderr).split(/\r?\n/).slice(0, 25),
+        });
+      } else {
+        report.V0.checks.push({
+          name: "eslint (changed files)",
+          status: "PASS",
+        });
+      }
+    }
+
+    const specFiles = vueChanged.filter((f) =>
+      [".spec.ts", ".test.ts", ".spec.tsx", ".test.tsx"].some((ext) =>
+        f.endsWith(ext)
+      )
+    );
+    for (const f of vueChanged) {
+      const base = f.replace(/\.[^.]+$/, "");
+      for (const cand of [`${base}.spec.ts`, `${base}.test.ts`]) {
+        if (
+          fs.existsSync(path.join(cwd, ...cand.split("/"))) &&
+          !specFiles.includes(cand)
+        ) {
+          specFiles.push(cand);
+        }
+      }
+    }
+
+    if (specFiles.length > 0 && profile.vue?.testRunner === "vitest") {
+      report.V1.status = "PASS";
+      const tRes = runCmd(
+        "npx",
+        ["--no-install", "vitest", "run", ...specFiles],
+        cwd
+      );
+      if (tRes.code !== 0) {
+        v1Failed = true;
+        report.V1.checks.push({
+          name: "vitest (targeted)",
+          status: "FAIL",
+          files: specFiles,
+          output: `${tRes.stdout}\n${tRes.stderr}`.split(/\r?\n/).slice(-30),
+        });
+      } else {
+        report.V1.checks.push({
+          name: "vitest (targeted)",
+          status: "PASS",
+          files: specFiles,
+        });
+      }
+    }
+  }
+
+  // Flutter V0 & V1
+  const dartChanged = changed.filter(
+    (f) =>
+      f.endsWith(".dart") &&
+      ![".g.dart", ".freezed.dart", ".gr.dart", ".mocks.dart"].some((ext) =>
+        f.endsWith(ext)
+      ) &&
+      fs.existsSync(path.join(cwd, ...f.split("/")))
+  );
+  if (profile.stacks.includes("flutter") && dartChanged.length > 0) {
+    if (report.V0.status === "SKIPPED") report.V0.status = "PASS";
+
+    const fRes = runCmd(
+      "dart",
+      ["format", "--output=none", "--set-exit-if-changed", ...dartChanged],
+      cwd
+    );
+    if (fRes.code !== 0 && fRes.code !== 127) {
+      v0Failed = true;
+      report.V0.checks.push({
+        name: "dart format (changed files)",
+        status: "FAIL",
+        output: (fRes.stdout || fRes.stderr).split(/\r?\n/).slice(0, 20),
+      });
+    } else if (fRes.code === 0) {
+      report.V0.checks.push({
+        name: "dart format (changed files)",
+        status: "PASS",
+      });
+    }
+
+    const aRes = runCmd("flutter", ["analyze", ...dartChanged], cwd);
+    if (aRes.code !== 0 && aRes.code !== 127) {
+      v0Failed = true;
+      report.V0.checks.push({
+        name: "flutter analyze (changed files)",
+        status: "FAIL",
+        output: `${aRes.stdout}\n${aRes.stderr}`.split(/\r?\n/).slice(0, 30),
+      });
+    } else if (aRes.code === 0) {
+      report.V0.checks.push({
+        name: "flutter analyze (changed files)",
+        status: "PASS",
+      });
+    }
+
+    const dartTests = dartChanged.filter((f) => f.endsWith("_test.dart"));
+    for (const f of dartChanged) {
+      if (f.startsWith("lib/")) {
+        const rel = f.slice(4, -5);
+        const cand = `test/${rel}_test.dart`;
+        if (
+          fs.existsSync(path.join(cwd, ...cand.split("/"))) &&
+          !dartTests.includes(cand)
+        ) {
+          dartTests.push(cand);
+        }
+      }
+    }
+
+    if (dartTests.length > 0) {
+      if (report.V1.status === "SKIPPED") report.V1.status = "PASS";
+      const tRes = runCmd("flutter", ["test", ...dartTests], cwd);
+      if (tRes.code !== 0) {
+        v1Failed = true;
+        report.V1.checks.push({
+          name: "flutter test (targeted)",
+          status: "FAIL",
+          files: dartTests,
+          output: `${tRes.stdout}\n${tRes.stderr}`.split(/\r?\n/).slice(-30),
+        });
+      } else {
+        report.V1.checks.push({
+          name: "flutter test (targeted)",
+          status: "PASS",
+          files: dartTests,
+        });
+      }
+    }
+  }
+
+  if (v0Failed) report.V0.status = "FAIL";
+  if (v1Failed) report.V1.status = "FAIL";
+
+  console.log(JSON.stringify(report, null, 2));
+  return v0Failed || v1Failed ? 1 : 0;
+}
+
+function main() {
+  const args = process.argv.slice(2);
+  const action = args[0] || "profile";
+  let cwd = process.cwd();
+  const cwdIdx = args.indexOf("--cwd");
+  if (cwdIdx !== -1 && args[cwdIdx + 1]) {
+    cwd = path.resolve(args[cwdIdx + 1]);
+  }
+
+  if (action === "profile") process.exit(cmdProfile(cwd));
+  else if (action === "classify") process.exit(cmdClassify(cwd));
+  else if (action === "verify") process.exit(cmdVerify(cwd));
+  else {
+    console.error("Unknown action. Use: profile | classify | verify");
+    process.exit(1);
+  }
+}
+
+main();

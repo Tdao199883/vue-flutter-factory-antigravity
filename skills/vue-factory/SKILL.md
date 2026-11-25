@@ -15,7 +15,7 @@ Follow this structured 6-stage factory workflow whenever building or modifying a
 
 ## Stage 1: Profile & Context Discovery
 
-1. Check `.agents/repo-profile.json` (or run `python3 ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.py profile --cwd "$(pwd)"`).
+1. Check `.agents/repo-profile.json` (or run `node ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.mjs profile --cwd "$(pwd)"`).
 2. Identify:
    - UI library (`Element Plus`, `Vuetify`, `Naive UI`, `Radix Vue / shadcn-vue`, `Tailwind CSS`)
    - State layer (`Pinia` vs composable state)
@@ -72,7 +72,7 @@ Every data-driven component or view must explicitly handle:
 
 Run the factory verification script before concluding your edits:
 ```bash
-python3 ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.py verify --cwd "$(pwd)"
+node ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.mjs verify --cwd "$(pwd)"
 ```
 - Fixes any `vue-tsc --noEmit` template type errors or `eslint` violations introduced in your diff.
 - Runs targeted `vitest` unit/component tests for affected files.

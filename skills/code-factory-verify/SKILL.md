@@ -19,7 +19,7 @@ This skill implements the language-agnostic **Code Factory engine** adapted for 
 Before running expensive exploration or verification commands on a repository for the first time, generate or inspect `.agents/repo-profile.json` using the bundled script:
 
 ```bash
-python3 ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.py profile --cwd "$(pwd)"
+node ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.mjs profile --cwd "$(pwd)"
 ```
 
 This creates/updates `.agents/repo-profile.json` with:
@@ -37,7 +37,7 @@ This creates/updates `.agents/repo-profile.json` with:
 Run the diff classifier to inspect all modified/untracked files and determine which Reviewer Subagents and Verify Ladder rungs must execute:
 
 ```bash
-python3 ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.py classify --cwd "$(pwd)"
+node ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.mjs classify --cwd "$(pwd)"
 ```
 
 Based on the JSON output of `classify`, invoke the recommended **Reviewer Fleet** subagents in parallel via `invoke_subagent`:
@@ -58,7 +58,7 @@ Based on the JSON output of `classify`, invoke the recommended **Reviewer Fleet*
 Execute the automated `V0`–`V2` verification script first:
 
 ```bash
-python3 ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.py verify --cwd "$(pwd)"
+node ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.mjs verify --cwd "$(pwd)"
 ```
 
 ### Rung Definitions

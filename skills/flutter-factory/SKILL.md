@@ -15,7 +15,7 @@ Follow this structured 6-stage factory workflow whenever building or modifying a
 
 ## Stage 1: Profile & Architecture Discovery
 
-1. Check `.agents/repo-profile.json` (or run `python3 ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.py profile --cwd "$(pwd)"`).
+1. Check `.agents/repo-profile.json` (or run `node ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.mjs profile --cwd "$(pwd)"`).
 2. Respect the repository's existing architecture:
    - **State Management**: `flutter_bloc` (Bloc/Cubit), `flutter_riverpod` (Notifier/AsyncNotifier), `provider`, or `get`.
    - **Code Generation**: Check `pubspec.yaml` for `freezed`, `json_serializable`, `riverpod_generator`, `auto_route_generator`, `injectable_generator`.
@@ -68,7 +68,7 @@ Follow this structured 6-stage factory workflow whenever building or modifying a
 
 Run the factory verification script after completing your edits:
 ```bash
-python3 ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.py verify --cwd "$(pwd)"
+node ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.mjs verify --cwd "$(pwd)"
 ```
 - Checks for stale codegen (`*.g.dart` / `*.freezed.dart` older than source `.dart`).
 - Runs `dart format` and `flutter analyze` filtered to touched `.dart` files.

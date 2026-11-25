@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 hooks/pre_tool_gate.py || python hooks/pre_tool_gate.py",
+            "command": "node hooks/pre_tool_gate.mjs || python3 hooks/pre_tool_gate.py || python hooks/pre_tool_gate.py",
             "timeout": 10
           }
         ]
@@ -19,7 +19,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "python3 hooks/stop_verify_gate.py || python hooks/stop_verify_gate.py",
+        "command": "node hooks/stop_verify_gate.mjs || python3 hooks/stop_verify_gate.py || python hooks/stop_verify_gate.py",
         "timeout": 30
       }
     ]

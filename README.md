@@ -15,8 +15,10 @@ vue-flutter-factory-antigravity/
 ├── assets/
 │   └── logo.svg                                    # Biểu tượng Plugin (Vue + Flutter + Verify Badge)
 ├── hooks/
-│   ├── pre_tool_gate.py                            # Chặn sửa file *.g.dart/*.freezed.dart & lệnh git nguy hiểm
-│   └── stop_verify_gate.py                         # Chốt chặn trước khi dừng: kiểm tra quên chạy build_runner & conflict
+│   ├── pre_tool_gate.mjs                           # (Node.js - Ưu tiên) Chặn sửa *.g.dart/*.freezed.dart & lệnh nguy hiểm
+│   ├── stop_verify_gate.mjs                        # (Node.js - Ưu tiên) Chốt chặn kiểm tra quên chạy build_runner & conflict
+│   ├── pre_tool_gate.py                            # (Python Fallback) Bản dự phòng nếu máy không có Node.js
+│   └── stop_verify_gate.py                         # (Python Fallback) Bản dự phòng nếu máy không có Node.js
 ├── rules/
 │   └── AGENTS.md                                   # Bộ quy tắc cốt lõi luôn bật (Always-on Rules) cho Vue & Flutter
 ├── agents/                                         # Dàn Reviewer Fleet Subagents
@@ -28,7 +30,8 @@ vue-flutter-factory-antigravity/
     ├── code-factory-verify/
     │   ├── SKILL.md                                # Điều phối Verify Ladder (V0-V4) & gọi dàn Reviewer Fleet
     │   └── scripts/
-    │       └── factory.py                          # Engine CLI: quét profile dự án, phân loại diff, chạy V0/V1 vi sai
+    │       ├── factory.mjs                         # (Node.js - Ưu tiên) Engine CLI chạy đa nền tảng không cần cài Python
+    │       └── factory.py                          # (Python Fallback) Engine CLI bản Python
     ├── vue-factory/
     │   └── SKILL.md                                # Quy trình 6 bước chuẩn cho Vue 3 / Nuxt / Pinia / TypeScript
     └── flutter-factory/
@@ -118,18 +121,18 @@ Khi plugin đang bật, bạn chỉ cần giao task bình thường (ví dụ: *
 * Các **Rules** và **Hooks** sẽ tự động bảo vệ ở hậu trường.
 * Các **Skills** (`vue-factory`, `flutter-factory`, `code-factory-verify`) sẽ tự động được Agent kích hoạt theo ngữ cảnh dự án.
 
-### 2. Gọi trực tiếp Engine CLI (`factory.py`)
-Bạn (hoặc Agent) có thể chạy trực tiếp bộ công cụ Python của Code Factory tại thư mục gốc của bất kỳ dự án Vue hoặc Flutter nào:
+### 2. Gọi trực tiếp Engine CLI (`factory.mjs` — Không cần cài Python)
+Bạn (hoặc Agent) có thể chạy trực tiếp bộ công cụ bằng **Node.js** (hoặc dùng `factory.py` nếu dùng Python) tại thư mục gốc của bất kỳ dự án Vue hoặc Flutter nào:
 
 ```bash
 # 1. Quét dự án và tạo/cập nhật bộ nhớ kiến trúc tại .agents/repo-profile.json
-python3 ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.py profile --cwd "$(pwd)"
+node ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.mjs profile --cwd "$(pwd)"
 
 # 2. Phân loại git diff hiện tại -> Đề xuất các Reviewer Subagents và các tầng Verify cần chạy
-python3 ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.py classify --cwd "$(pwd)"
+node ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.mjs classify --cwd "$(pwd)"
 
 # 3. Chạy kiểm tra chất lượng tự động tầng V0 (typecheck/lint vi sai) & V1 (test mục tiêu)
-python3 ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.py verify --cwd "$(pwd)"
+node ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.mjs verify --cwd "$(pwd)"
 ```
 
 ### 3. Các câu lệnh gợi ý (Suggested Prompts)
