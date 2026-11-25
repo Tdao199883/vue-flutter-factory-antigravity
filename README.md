@@ -1,91 +1,127 @@
-# Vue 3 & Flutter Code Factory for Google Antigravity (`vue-flutter-factory-antigravity`)
+# Vue 3 & Flutter Code Factory cho Google Antigravity (`vue-flutter-factory-antigravity`)
 
-An end-to-end **Code Factory quality-enforcement plugin** purpose-built for **Google Antigravity (AGY)** and optimized specifically for **Vue 3 / Nuxt (Web)** and **Flutter / Dart (Mobile)** engineering workflows.
+Bộ **Code Factory kiểm soát chất lượng code tự động** được thiết kế chuyên biệt cho **Google Antigravity (AGY)**, tối ưu hóa riêng cho quy trình phát triển **Web (Vue 3 / Nuxt / Pinia / TypeScript)** và **Mobile (Flutter / Dart)**.
 
-Inspired by `code-factory`, this plugin adapts the **Verify Ladder (`V0` → `V4`)**, **Repository Memory Profile**, **Diff Classifier**, **Reviewer Fleet Subagents**, and **Fail-Safe Lifecycle Hooks** natively to Antigravity—supercharging `V3/V4` verification with Antigravity's **Browser Subagent**, **Chrome DevTools MCP**, and **Android Device Hub**.
+Lấy cảm hứng từ kiến trúc `code-factory`, plugin này chuyển hóa toàn bộ mô hình **Verify Ladder (`V0` → `V4`)**, **Bộ nhớ dự án (`Repository Memory Profile`)**, **Phân loại thay đổi (`Diff Classifier`)**, **Dàn Subagents Chuyên gia Review (`Reviewer Fleet`)**, và **Chốt chặn an toàn (`Lifecycle Hooks`)** sang chuẩn native của Antigravity — đồng thời nâng cấp bước kiểm thử thực tế (`V3/V4`) bằng **Browser Subagent**, **Chrome DevTools MCP**, và **Android Device Hub**.
 
 ---
 
-## Architecture & What's Included
+## 🏗️ Cấu trúc thư mục
 
 ```text
 vue-flutter-factory-antigravity/
-├── plugin.json                                     # Antigravity Plugin Manifest
-├── hooks.json                                      # PreToolUse & Stop Verify Gates
+├── plugin.json                                     # Manifest chuẩn của Antigravity Plugin
+├── hooks.json                                      # Cấu hình Lifecycle Hooks (PreToolUse & Stop Gates)
 ├── assets/
-│   └── logo.svg                                    # Plugin icon
+│   └── logo.svg                                    # Biểu tượng Plugin (Vue + Flutter + Verify Badge)
 ├── hooks/
-│   ├── pre_tool_gate.py                            # Blocks editing *.g.dart/*.freezed.dart & dangerous git cmds
-│   └── stop_verify_gate.py                         # Stop-gate checking stale codegen & conflict markers
+│   ├── pre_tool_gate.py                            # Chặn sửa file *.g.dart/*.freezed.dart & lệnh git nguy hiểm
+│   └── stop_verify_gate.py                         # Chốt chặn trước khi dừng: kiểm tra quên chạy build_runner & conflict
 ├── rules/
-│   └── AGENTS.md                                   # Always-on Vue 3 & Flutter quality rules
-├── agents/                                         # Reviewer Fleet Subagents
-│   ├── vue-reactivity-reviewer.md                  # Audits Pinia storeToRefs, watcher loops, reactivity loss
-│   ├── vue-ui-a11y-reviewer.md                     # Audits 4-state UI, ARIA/a11y, CWV (LCP/CLS)
-│   ├── flutter-lifecycle-memory-reviewer.md        # Audits controller dispose(), context.mounted after await
-│   └── flutter-ui-performance-reviewer.md          # Audits RenderFlex overflow, unbounded ListView, const rebuilds
-└── skills/                                         # Progressive Disclosure Skills
+│   └── AGENTS.md                                   # Bộ quy tắc cốt lõi luôn bật (Always-on Rules) cho Vue & Flutter
+├── agents/                                         # Dàn Reviewer Fleet Subagents
+│   ├── vue-reactivity-reviewer.md                  # Soát lỗi mất reactivity (storeToRefs), vòng lặp watch, mutate prop
+│   ├── vue-ui-a11y-reviewer.md                     # Soát lỗi 4 trạng thái UI, Accessibility (ARIA) & Core Web Vitals
+│   ├── flutter-lifecycle-memory-reviewer.md        # Soát lỗi quên dispose() controller, dùng BuildContext sau await
+│   └── flutter-ui-performance-reviewer.md          # Soát lỗi vỡ khung RenderFlex overflow, ListView trong Column, thiếu const
+└── skills/                                         # Bộ Skills điều phối quy trình
     ├── code-factory-verify/
-    │   ├── SKILL.md                                # Orchestrates V0-V4 Verify Ladder & Reviewer Fleet dispatch
+    │   ├── SKILL.md                                # Điều phối Verify Ladder (V0-V4) & gọi dàn Reviewer Fleet
     │   └── scripts/
-    │       └── factory.py                          # CLI engine: profile, classify, and differential verify
+    │       └── factory.py                          # Engine CLI: quét profile dự án, phân loại diff, chạy V0/V1 vi sai
     ├── vue-factory/
-    │   └── SKILL.md                                # 6-stage Vue 3 / Pinia / TypeScript workflow
+    │   └── SKILL.md                                # Quy trình 6 bước chuẩn cho Vue 3 / Nuxt / Pinia / TypeScript
     └── flutter-factory/
-        └── SKILL.md                                # 6-stage Flutter / Dart / Freezed / Bloc / Riverpod workflow
+        └── SKILL.md                                # Quy trình 6 bước chuẩn cho Flutter / Dart / Freezed / Bloc / Riverpod
 ```
 
 ---
 
-## Key Features for Vue 3 (Web) & Flutter (Mobile)
+## 🚀 Các tính năng cốt lõi cho Vue 3 (Web) & Flutter (Mobile)
 
-### 1. Fail-Safe Lifecycle Hooks (`hooks.json`)
-- **`PreToolUse` Gate (`hooks/pre_tool_gate.py`)**:
-  - **Hard Deny** on direct edits to generated Flutter files (`*.g.dart`, `*.freezed.dart`, `*.gr.dart`, `*.config.dart`, `*.mocks.dart`) and generated Vue/Nuxt files (`auto-imports.d.ts`, `components.d.ts`, `typed-router.d.ts`).
-  - **Confirmation Prompt (`ask`)** when modifying native mobile configurations (`AndroidManifest.xml`, `Info.plist`, `build.gradle`, `Podfile`) or running destructive git commands (`git reset --hard`, `git push --force`).
-- **`Stop` Verify Gate (`hooks/stop_verify_gate.py`)**:
-  - Automatically checks before the agent ends its turn whether any modified `@freezed` / `@JsonSerializable` / `@riverpod` `.dart` file has a missing or stale `.g.dart` / `.freezed.dart` counterpart, or unresolved merge conflict markers, forcing the agent to fix them before reporting completion.
+### 1. Chốt chặn an toàn tự động (`hooks.json`)
 
-### 2. The Verify Ladder (`V0` → `V4`)
-| Rung | Vue 3 (Web) | Flutter (Mobile) |
-| :--- | :--- | :--- |
-| **`V0` (Differential Static)** | `vue-tsc --noEmit` + `eslint` (filtered strictly to modified `.vue`/`.ts` files) | Stale codegen check + `dart format` + `flutter analyze` (filtered to modified `.dart` files) |
-| **`V1` / `V2` (Targeted Tests)** | `vitest run <changed_spec.ts>` | `flutter test <changed_test.dart>` |
-| **`V3` (Live Runtime & UI)** | `browser` subagent / `chrome-devtools` checks live localhost route & zero `[Vue warn]` in Console | `android-device-hub` (`android layout`, `android screen`, `adb logcat`) checks zero `RenderFlex overflowed` |
-| **`V4` (Evidence)** | Browser screenshot + verification table | Emulator screenshot + verification table |
-
-### 3. Specialized Reviewer Fleet Subagents (`agents/`)
-- **`vue-reactivity-reviewer`**: Catches direct Pinia destructuring without `storeToRefs()`, prop mutations, infinite route-query watcher loops, and uncleaned event listeners/timers.
-- **`vue-ui-a11y-reviewer`**: Audits Loading/Empty/Error/Data states, double-submit protection, semantic HTML/ARIA, and `v-for` key stability.
-- **`flutter-lifecycle-memory-reviewer`**: Catches undisposed `TextEditingController` / `ScrollController` / `AnimationController` / `FocusNode` / `StreamSubscription`, missing `if (!context.mounted) return;` after `await`, and `FutureBuilder` anti-patterns inside `build()`.
-- **`flutter-ui-performance-reviewer`**: Catches `Vertical viewport was given unbounded height` (`ListView` inside `Column`), `RenderFlex overflowed` in `Row`, and helper methods (`Widget _build...()`) instead of `const` `StatelessWidget` classes.
+* **Chốt chặn trước khi chạy công cụ — `PreToolUse` (`hooks/pre_tool_gate.py`):**
+  * **Cấm tuyệt đối (`deny`)** việc AI sửa trực tiếp vào các file sinh tự động của Flutter (`*.g.dart`, `*.freezed.dart`, `*.gr.dart`, `*.config.dart`, `*.mocks.dart`) và của Vue/Nuxt (`auto-imports.d.ts`, `components.d.ts`, `typed-router.d.ts`). Khi bị chặn, Hook sẽ hướng dẫn AI sửa ở file nguồn và chạy `build_runner`.
+  * **Yêu cầu xác nhận (`ask`)** khi AI định chỉnh sửa các file cấu hình native nhạy cảm của Mobile (`AndroidManifest.xml`, `Info.plist`, `build.gradle`, `Podfile`) hoặc chạy các lệnh Git có nguy cơ mất dữ liệu (`git reset --hard`, `git push --force`, `git clean -fd`).
+* **Chốt chặn trước khi kết thúc lượt — `Stop` Verify Gate (`hooks/stop_verify_gate.py`):**
+  * Ngay khi AI định dừng lại để báo cáo hoàn thành, Hook tự động quét các file vừa sửa: nếu phát hiện file `.dart` có dùng `@freezed`, `@JsonSerializable`, `@riverpod` mà chưa chạy `build_runner` (file `.g.dart`/`.freezed.dart` bị thiếu hoặc cũ hơn file gốc) hoặc còn sót dấu merge conflict (`<<<<<<<`), Hook sẽ tự động giữ AI lại (`"decision": "continue"`) để xử lý dứt điểm.
 
 ---
 
-## Installation
+### 2. Thang kiểm chứng chất lượng 5 tầng — Verify Ladder (`V0` → `V4`)
 
-Clone this repository directly into your Antigravity global plugins directory:
+Điểm mạnh nhất của Verify Ladder là cơ chế **Kiểm tra vi sai (Differential Check)**: chỉ bắt lỗi phát sinh trên đúng những file bạn vừa chạm vào, không bị kẹt bởi các lỗi cũ (legacy tech debt) có sẵn trong dự án.
+
+| Tầng Verify | Khi code Web (Vue 3 / Nuxt) | Khi code Mobile (Flutter / Dart) |
+| :--- | :--- | :--- |
+| **`V0` (Kiểm tra tĩnh & Type)** | Chạy `vue-tsc --noEmit` (bắt lỗi type ngay trong `<template>`) + `eslint` trên các file `.vue`/`.ts` vừa sửa | Kiểm tra độ mới của file codegen + `dart format` + `flutter analyze` trên các file `.dart` vừa sửa |
+| **`V1` / `V2` (Test mục tiêu)** | Chạy `vitest run <changed_spec.ts>` cho đúng component/store liên quan | Chạy `flutter test <changed_test.dart>` (Unit / Widget test liên quan) |
+| **`V3` (Chạy thực tế & Giao diện)** | Gọi **`browser` subagent** / **`chrome-devtools`** mở localhost, bấm thử luồng UI và kiểm tra không có `[Vue warn]` trong Console | Gọi **`android-device-hub`** (`android layout`, `android screen`, `adb logcat`) kiểm tra máy ảo không bị lỗi sọc vàng-đen `RenderFlex overflowed` |
+| **`V4` (Bằng chứng bàn giao)** | Ảnh chụp màn hình trình duyệt + bảng tổng kết Verify | Ảnh chụp màn hình máy ảo Android + bảng tổng kết Verify |
+
+---
+
+### 3. Dàn Chuyên gia Review độc lập — Reviewer Fleet Subagents (`agents/`)
+
+Thay vì chỉ dùng 1 cuộc hội thoại chung, hệ thống phân tích `git diff` và gọi song song các Subagents chuyên biệt để bắt những lỗi logic mà trình biên dịch không phát hiện được:
+
+* 🟢 **`vue-reactivity-reviewer`**:
+  * Bắt lỗi destructure trực tiếp từ Pinia store làm đứt tính phản ứng (bắt buộc bọc qua `storeToRefs()`).
+  * Bắt lỗi gán/sửa trực tiếp `props`, lạm dụng `watch` thay vì `computed`, hoặc đồng bộ 2 chiều giữa URL query (`useRoute().query`) và store gây vòng lặp vô tận (infinite loop).
+  * Bắt lỗi quên dọn dẹp `setInterval`, `addEventListener`, `AbortController` trong `onUnmounted`.
+* 🟢 **`vue-ui-a11y-reviewer`**:
+  * Kiểm tra giao diện đã xử lý đủ **4 trạng thái** chưa: **Loading** (skeleton/spinner + khóa nút chống bấm đúp), **Error** (có nút Thử lại), **Empty** (trạng thái rỗng), và **Data**.
+  * Kiểm tra chuẩn Accessibility (thẻ `<button>`, `aria-label`, điều hướng bàn phím) và lỗi dùng `:key="index"` trong `v-for` khi danh sách có lọc/sắp xếp.
+* 🔵 **`flutter-lifecycle-memory-reviewer`**:
+  * Kiểm tra toàn bộ `TextEditingController`, `ScrollController`, `PageController`, `TabController`, `AnimationController`, `FocusNode`, `StreamSubscription` đã được `.dispose()` / `.cancel()` trong hàm `dispose()` chưa.
+  * Bắt lỗi dùng `BuildContext` (`Navigator.of(context)`, `ScaffoldMessenger.of(context)`, `showDialog`) sau từ khóa `await` mà thiếu chốt chặn `if (!context.mounted) return;`.
+  * Bắt lỗi truyền trực tiếp hàm gọi API vào `FutureBuilder(future: api.fetch())` bên trong hàm `build()`.
+* 🔵 **`flutter-ui-performance-reviewer`**:
+  * Bắt lỗi kinh điển gây đỏ/trắng màn hình: đặt `ListView` / `GridView` bên trong `Column` mà không bọc `Expanded` / `Flexible` (`Vertical viewport was given unbounded height`).
+  * Bắt lỗi tràn chữ/vỡ khung (`RenderFlex overflowed`) khi đặt `Text` động bên trong `Row` mà không bọc `Expanded`/`Flexible` kèm `TextOverflow.ellipsis`.
+  * Nhắc tách các hàm `Widget _buildItem()` thành `class _Item extends StatelessWidget` có `const` constructor để tối ưu hiệu năng rebuild.
+
+---
+
+## 📥 Hướng dẫn cài đặt
+
+Bạn chỉ cần clone trực tiếp repository này vào thư mục Global Plugins của Antigravity:
 
 ```bash
 git clone https://github.com/Tdao199883/vue-flutter-factory-antigravity.git \
   ~/.gemini/config/plugins/vue-flutter-factory-antigravity
 ```
 
-Once placed in `~/.gemini/config/plugins/vue-flutter-factory-antigravity`, Antigravity automatically discovers and loads the plugin, its rules, skills, reviewer subagents, and lifecycle hooks.
+Ngay sau khi clone vào `~/.gemini/config/plugins/vue-flutter-factory-antigravity`, Antigravity sẽ **tự động nhận diện và kích hoạt** toàn bộ Rules, Skills, Reviewer Subagents và Hooks mà không cần khởi động lại.
+
+Bạn có thể bật/tắt nhanh plugin bất cứ lúc nào trong phần **Customizations → Plugins** trên giao diện Antigravity.
 
 ---
 
-## Usage Commands (via `factory.py`)
+## 🛠️ Cách sử dụng
 
-You or the agent can also invoke the core engine directly inside any Vue or Flutter workspace:
+### 1. Tự động trong lúc chat (Mặc định)
+Khi plugin đang bật, bạn chỉ cần giao task bình thường (ví dụ: *"Tạo trang quản lý đơn hàng bằng Vue 3 + Pinia"* hoặc *"Tạo màn hình chi tiết sản phẩm bằng Flutter + Riverpod"*).
+* Các **Rules** và **Hooks** sẽ tự động bảo vệ ở hậu trường.
+* Các **Skills** (`vue-factory`, `flutter-factory`, `code-factory-verify`) sẽ tự động được Agent kích hoạt theo ngữ cảnh dự án.
+
+### 2. Gọi trực tiếp Engine CLI (`factory.py`)
+Bạn (hoặc Agent) có thể chạy trực tiếp bộ công cụ Python của Code Factory tại thư mục gốc của bất kỳ dự án Vue hoặc Flutter nào:
 
 ```bash
-# 1. Generate or update .agents/repo-profile.json
+# 1. Quét dự án và tạo/cập nhật bộ nhớ kiến trúc tại .agents/repo-profile.json
 python3 ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.py profile --cwd "$(pwd)"
 
-# 2. Classify current git diff -> recommended Reviewer Subagents & Verify Rungs
+# 2. Phân loại git diff hiện tại -> Đề xuất các Reviewer Subagents và các tầng Verify cần chạy
 python3 ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.py classify --cwd "$(pwd)"
 
-# 3. Run V0 (differential typecheck/lint) & V1 (targeted unit/widget tests)
+# 3. Chạy kiểm tra chất lượng tự động tầng V0 (typecheck/lint vi sai) & V1 (test mục tiêu)
 python3 ~/.gemini/config/plugins/vue-flutter-factory-antigravity/skills/code-factory-verify/scripts/factory.py verify --cwd "$(pwd)"
 ```
+
+### 3. Các câu lệnh gợi ý (Suggested Prompts)
+Bạn có thể gõ nhanh vào khung chat của Antigravity:
+* *"Chạy Verify Ladder (V0-V4) của Code Factory cho các thay đổi hiện tại của tớ"*
+* *"Gọi dàn Vue Reviewer Fleet kiểm tra reactivity và UI cho các file .vue vừa sửa"*
+* *"Gọi dàn Flutter Reviewer Fleet kiểm tra lifecycle, memory leak và lỗi overflow cho các file .dart vừa sửa"*
