@@ -1,0 +1,27 @@
+{
+  "factory-edit-and-git-gate": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "edit_file|write_file|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 hooks/pre_tool_gate.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "factory-verify-stop-gate": {
+    "enabled": true,
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python3 hooks/stop_verify_gate.py",
+        "timeout": 30
+      }
+    ]
+  }
+}

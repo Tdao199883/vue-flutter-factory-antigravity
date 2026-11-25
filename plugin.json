@@ -1,0 +1,18 @@
+{
+  "name": "vue-flutter-factory-antigravity",
+  "displayName": "Vue & Flutter Code Factory",
+  "version": "1.0.0",
+  "description": "Quality-enforcement Code Factory for Vue 3 (Web) and Flutter (Mobile) on Google Antigravity: Verify Ladder (V0-V4), Reviewer Fleet Subagents, Fail-Safe Edit/Git Gates, Browser & Android Device Hub integration.",
+  "logo": "assets/logo.svg",
+  "author": {
+    "name": "Tdao199883",
+    "url": "https://github.com/Tdao199883"
+  },
+  "homepage": "https://github.com/Tdao199883/vue-flutter-factory-antigravity",
+  "repository": "https://github.com/Tdao199883/vue-flutter-factory-antigravity",
+  "suggestedPrompts": [
+    "Run the Vue & Flutter Code Factory verification ladder (V0-V4) on my current changes",
+    "Dispatch the Vue Reactivity and UI Reviewer Fleet on my modified .vue and .ts files",
+    "Dispatch the Flutter Lifecycle, Memory, and Overflow Reviewer Fleet on my modified .dart files"
+  ]
+}
